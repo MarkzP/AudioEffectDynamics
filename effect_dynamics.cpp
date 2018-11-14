@@ -27,103 +27,118 @@
  */
 
 #include "effect_dynamics.h"
+#include "fast_log.h"
 #include "utility/dspinst.h"
+#include "utility/sqrt_integer.h"
 
-
-void AudioEffectDynamics::update(void) {
-	audio_block_t *block;
+static float analyse_rms(int16_t *data) {
 	
-	block = receiveWritable(0);
-	
-	if (!block) {
-    gain = 1.0f;
-		return;
-	}
-
-	uint32_t *p = (uint32_t *)block->data;
+	uint32_t *p = (uint32_t *)data;
 	const uint32_t *end = p + AUDIO_BLOCK_SAMPLES / 2;
-	int32_t mult = gain * 65536.0f;
 	int64_t sum = 0;
-	uint32_t n1, n2, n3, n4;
-	int32_t v1b, v1t, v2b, v2t, v3b, v3t, v4b, v4t;
-  
 	do {
-		//Grab 8 sample
-		n1 = *p;
-		n2 = *(p + 1);
-		n3 = *(p + 2);
-		n4 = *(p + 3);
-
-		//Compute square sum of all 8 samples
+		uint32_t n1 = *p++;
+		uint32_t n2 = *p++;
+		uint32_t n3 = *p++;
+		uint32_t n4 = *p++;
 		sum = multiply_accumulate_16tx16t_add_16bx16b(sum, n1, n1);
 		sum = multiply_accumulate_16tx16t_add_16bx16b(sum, n2, n2);
 		sum = multiply_accumulate_16tx16t_add_16bx16b(sum, n3, n3);
 		sum = multiply_accumulate_16tx16t_add_16bx16b(sum, n4, n4);
-
-		//Apply gain to all 8 samples
-		v1b = signed_multiply_32x16b(mult, n1);
-		v1t = signed_multiply_32x16t(mult, n1);
-		v2b = signed_multiply_32x16b(mult, n2);
-		v2t = signed_multiply_32x16t(mult, n2);
-		v3b = signed_multiply_32x16b(mult, n3);
-		v3t = signed_multiply_32x16t(mult, n3);
-		v4b = signed_multiply_32x16b(mult, n4);
-		v4t = signed_multiply_32x16t(mult, n4);
-
-		v1b = signed_saturate_rshift(v1b, 16, 0);
-		v1t = signed_saturate_rshift(v1t, 16, 0);
-		v2b = signed_saturate_rshift(v2b, 16, 0);
-		v2t = signed_saturate_rshift(v2t, 16, 0);
-		v3b = signed_saturate_rshift(v3b, 16, 0);
-		v3t = signed_saturate_rshift(v3t, 16, 0);
-		v4b = signed_saturate_rshift(v4b, 16, 0);
-		v4t = signed_saturate_rshift(v4t, 16, 0);
-
-		//Pack & save samples
-		*p++ = pack_16b_16b(v1t, v1b);
-		*p++ = pack_16b_16b(v2t, v2b);
-		*p++ = pack_16b_16b(v3t, v3b);
-		*p++ = pack_16b_16b(v4t, v4b);
+		
 	} while (p < end);
+	
+	int32_t meansq = sum / AUDIO_BLOCK_SAMPLES;
+	return sqrt_uint32(meansq) / 32767.0f;
+}
 
+static void applyGain(int16_t *data, int32_t mult1, int32_t mult2) {
+	
+	uint32_t *p = (uint32_t *)data;
+	const uint32_t *end = p + AUDIO_BLOCK_SAMPLES / 2;
+	int32_t inc = (mult2 - mult1) / (AUDIO_BLOCK_SAMPLES / 2);
+	
+	do {
+		uint32_t tmp32 = *p; // read 2 samples from *data
+		int32_t val1 = signed_multiply_32x16b(mult1, tmp32);
+		mult1 += inc;
+		int32_t val2 = signed_multiply_32x16t(mult1, tmp32);
+		mult1 += inc;
+		val1 = signed_saturate_rshift(val1, 16, 0);
+		val2 = signed_saturate_rshift(val2, 16, 0);
+		*p++ = pack_16b_16b(val2, val1);
+	} while (p < end);
+}
+
+void AudioEffectDynamics::update(void) {
+
+	audio_block_t *block;
+	
+	block = receiveWritable(0);
+
+	if (!block) return;
+	
+	if (!gateEnabled && !compEnabled && !limiterEnabled) {
+		
+		//Transmit & release
+		transmit(block);
+		release(block);
+		return;
+	}
+	
+	//Analyze received block
+	float rms = analyse_rms(block->data);
+	
 	//Compute block RMS level in Db
-	float meansq = (float)sum / (float)AUDIO_BLOCK_SAMPLES;
-	float inputdb = 20.0f * log10f(sqrtf(meansq) / 32767.0f);
-
+	float inputdb = MIN_DB;
+	if (rms > 0) inputdb = unitToDb(rms);
+	
 	//Gate
-	if (inputdb >= gateThreshold) gateGain = 1.0f;
-	else if (inputdb < gateThresholdClose) gateGain *= aGateRelease;
+	if (gateEnabled) {
+		if (inputdb >= gateThresholdOpen) gatedb = (aGateAttack * gatedb) + (aOneMinusGateAttack * MAX_DB);
+		else if (inputdb < gateThresholdClose) gatedb = (aGateRelease * gatedb) + (aOneMinusGateRelease * MIN_DB);
+	}
+	else gatedb = MAX_DB;
 
 	//Compressor
-	float attdb = 0; //Below knee
-	if (inputdb >= compThreshold - aHalfKneeWidth && inputdb < compThreshold + aHalfKneeWidth) {
-    //Knee transition
-    float knee = inputdb - compThreshold + aHalfKneeWidth;
-		attdb = (inputdb + ((aKneeRatio * knee * knee) / aTwoKneeWidth)) - inputdb;
+	if (compEnabled) {
+		float attdb = MAX_DB; //Below knee
+		if (inputdb >= aLowKnee) {
+			if(inputdb <= aHighKnee) {
+				//Knee transition
+				float knee = inputdb - aLowKnee;
+				attdb = aKneeRatio * knee * knee * aTwoKneeWidth;
+			}
+			else {
+				//Above knee
+				attdb = compThreshold + ((inputdb - compThreshold) * compRatio) - inputdb;
+			}
+		}
+		if (attdb <= compdb) compdb = (aCompAttack * compdb) + (aOneMinusCompAttack * attdb);
+		else compdb = (aCompRelease * compdb) + (aOneMinusCompRelease * attdb);
 	}
-	else {
-	  //Above knee
-	  attdb = compThreshold + ((inputdb - compThreshold) / compRatio) - inputdb;
-	}
-
-	if (attdb <= compdb) compdb = (aCompAttack * compdb) + (aOneMinusCompAttack * attdb);
-	else compdb = (aCompRelease * compdb) + (aOneMinusCompRelease * attdb);
+	else compdb = MAX_DB;
 
 	//Brickwall Limiter
-	if (limitThreshold < 0.0f) {
-		float outdb = inputdb + compdb + compMakeupGain;
+	if (limiterEnabled) {
+		float outdb = inputdb + compdb + makeupdb;
 		if (outdb >= limitThreshold) limitdb = (aLimitAttack * limitdb) + (aOneMinusLimitAttack * (limitThreshold - outdb));
 		else limitdb *= aLimitRelease;
 	}
-	else limitdb = 0.0f;
-  
-  
-	//Compute linear gain for next block
-	gain = gateGain * powf(10.0f, (compdb + compMakeupGain + limitdb) / 20.0f);
+	else limitdb = MAX_DB;
 
+	//Compute linear gain
+	float totalGain = gatedb + compdb + makeupdb + limitdb;
+	int32_t mult = dbToUnit(totalGain) * 65536.0f;
+
+	//Apply gain to block
+	applyGain(block->data, last_mult, mult);
+	last_mult = mult;
+	
 	//Transmit & release
 	transmit(block);
 	release(block);
 }
+
 
 
