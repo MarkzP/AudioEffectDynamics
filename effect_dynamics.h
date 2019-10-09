@@ -50,6 +50,10 @@ public:
 		compression();
 		limit();
 		autoMakeupGain();
+		
+		gatedb = MIN_DB;
+		compdb = MIN_DB;
+		limitdb = MIN_DB;
 	}
 
 	//Sets the gate parameters.
@@ -69,8 +73,6 @@ public:
 		aOneMinusGateAttack = 1.0f - aGateAttack;
 		aGateRelease = timeToAlpha(gateReleaseTime);
 		aOneMinusGateRelease = 1.0f - aGateRelease;
-
-		gatedb = MIN_DB;
 	}
 
 	//Sets the compression parameters.
@@ -98,8 +100,6 @@ public:
 		aKneeRatio = compRatio - 1.0f;
 		aLowKnee = compThreshold - aHalfKneeWidth;
 		aHighKnee = compThreshold + aHalfKneeWidth;
-		
-		compdb = MIN_DB;
 	}
 
 	//Sets the hard limiter parameters
@@ -118,8 +118,6 @@ public:
 		aLimitAttack = timeToAlpha(limitAttackTime);
 		aOneMinusLimitAttack = 1.0f - aLimitAttack;
 		aLimitRelease = timeToAlpha(limitReleaseTime);
-		
-		limitdb = MIN_DB;
 	}
 	
 	//Enables automatic makeup gain setting
