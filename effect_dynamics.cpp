@@ -47,7 +47,7 @@ static float analyse_rms(int16_t *data) {
 		sum = multiply_accumulate_16tx16t_add_16bx16b(sum, n4, n4);
 		
 	} while (p < end);
-	
+	if (sum == 0) return 0;
 	int32_t meansq = sum / AUDIO_BLOCK_SAMPLES;
 	return sqrt_uint32(meansq) / 32767.0f;
 }
