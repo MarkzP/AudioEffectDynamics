@@ -174,9 +174,11 @@ private:
 	float aLimitAttack;
 	float aOneMinusLimitAttack;
 	float aLimitRelease;
-	
-	int32_t last_mult;
-	
+	const static unsigned int sampleBufferSize = 4410;
+	u_int64_t sumOfSamplesSquared = 0;
+	uint32_t samplesSquared[sampleBufferSize] = {0};
+	uint16_t sampleIndex = 0;
+
 	void computeMakeupGain() {
 		if (mgAutoEnabled) {
 			makeupdb = -compThreshold + (compThreshold * compRatio) + limitThreshold - mgHeadroom;

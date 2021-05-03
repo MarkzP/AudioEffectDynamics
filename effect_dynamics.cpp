@@ -85,56 +85,67 @@ void AudioEffectDynamics::update(void) {
 		release(block);
 		return;
 	}
-	
-	//Analyze received block
-	float rms = analyse_rms(block->data);
-	
-	//Compute block RMS level in Db
-	float inputdb = MIN_DB;
-	if (rms > 0) inputdb = unitToDb(rms);
-	
-	//Gate
-	if (gateEnabled) {
-		if (inputdb >= gateThresholdOpen) gatedb = (aGateAttack * gatedb) + (aOneMinusGateAttack * MAX_DB);
-		else if (inputdb < gateThresholdClose) gatedb = (aGateRelease * gatedb) + (aOneMinusGateRelease * MIN_DB);
-	}
-	else gatedb = MAX_DB;
 
-	//Compressor
-	if (compEnabled) {
-		float attdb = MAX_DB; //Below knee
-		if (inputdb >= aLowKnee) {
-			if(inputdb <= aHighKnee) {
-				//Knee transition
-				float knee = inputdb - aLowKnee;
-				attdb = aKneeRatio * knee * knee * aTwoKneeWidth;
-			}
-			else {
-				//Above knee
-				attdb = compThreshold + ((inputdb - compThreshold) * compRatio) - inputdb;
-			}
-		}
-		if (attdb <= compdb) compdb = (aCompAttack * compdb) + (aOneMinusCompAttack * attdb);
-		else compdb = (aCompRelease * compdb) + (aOneMinusCompRelease * attdb);
-	}
-	else compdb = MAX_DB;
+	for (int i=0; i<AUDIO_BLOCK_SAMPLES; i++) {
 
-	//Brickwall Limiter
-	if (limiterEnabled) {
-		float outdb = inputdb + compdb + makeupdb;
-		if (outdb >= limitThreshold) limitdb = (aLimitAttack * limitdb) + (aOneMinusLimitAttack * (limitThreshold - outdb));
-		else limitdb *= aLimitRelease;
-	}
-	else limitdb = MAX_DB;
+        unsigned int sampleIndexPlus1 = (sampleIndex + 1) % sampleBufferSize;
 
-	//Compute linear gain
-	float totalGain = gatedb + compdb + makeupdb + limitdb;
-	int32_t mult = dbToUnit(totalGain) * 65536.0f;
+        uint32_t sampleToRemove = samplesSquared[sampleIndexPlus1];
+        sumOfSamplesSquared -= (sampleToRemove * sampleToRemove);
 
-	//Apply gain to block
-	applyGain(block->data, last_mult, mult);
-	last_mult = mult;
-	
+        int16_t sample = block->data[i];
+        samplesSquared[sampleIndex] = abs(sample);
+        uint32_t sampleSquared = sample * sample;
+        sumOfSamplesSquared += sampleSquared;
+
+        sampleIndex = (sampleIndex + 1) % sampleBufferSize;
+
+        float rms = sqrt(sumOfSamplesSquared / float(sampleBufferSize)) / 32768.0;
+
+        //Compute block RMS level in Db
+        float inputdb = MIN_DB;
+        if (rms > 0) inputdb = unitToDb(rms);
+
+        //Gate
+        if (gateEnabled) {
+            if (inputdb >= gateThresholdOpen) gatedb = (aGateAttack * gatedb) + (aOneMinusGateAttack * MAX_DB);
+            else if (inputdb < gateThresholdClose) gatedb = (aGateRelease * gatedb) + (aOneMinusGateRelease * MIN_DB);
+        } else gatedb = MAX_DB;
+
+        //Compressor
+        if (compEnabled) {
+            float attdb = MAX_DB; //Below knee
+            if (inputdb >= aLowKnee) {
+                if (inputdb <= aHighKnee) {
+                    //Knee transition
+                    float knee = inputdb - aLowKnee;
+                    attdb = aKneeRatio * knee * knee * aTwoKneeWidth;
+                } else {
+                    //Above knee
+                    attdb = compThreshold + ((inputdb - compThreshold) * compRatio) - inputdb;
+                }
+            }
+            if (attdb <= compdb) compdb = (aCompAttack * compdb) + (aOneMinusCompAttack * attdb);
+            else compdb = (aCompRelease * compdb) + (aOneMinusCompRelease * attdb);
+        } else compdb = MAX_DB;
+
+        //Brickwall Limiter
+        if (limiterEnabled) {
+            float outdb = inputdb + compdb + makeupdb;
+            if (outdb >= limitThreshold) limitdb = (aLimitAttack * limitdb) +
+                                                   (aOneMinusLimitAttack * (limitThreshold - outdb));
+            else limitdb *= aLimitRelease;
+        } else limitdb = MAX_DB;
+
+        //Compute linear gain
+        float totalGain = gatedb + compdb + makeupdb + limitdb;
+
+        float multiplier = dbToUnit(totalGain);
+        int16_t result = sample * multiplier;
+        block->data[i] = result;
+        //Apply gain to block
+    }
+
 	//Transmit & release
 	transmit(block);
 	release(block);
