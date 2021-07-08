@@ -29,6 +29,8 @@
 #ifndef effect_dynamics_h_
 #define effect_dynamics_h_
 
+#if !defined(KINETISL)
+
 #include "Arduino.h"
 #include "AudioStream.h"
 
@@ -192,5 +194,6 @@ private:
 	
 	virtual void update(void);
 };
+#endif
 
 #endif

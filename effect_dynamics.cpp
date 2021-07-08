@@ -25,6 +25,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#if !defined(KINETISL)
 
 #include "effect_dynamics.h"
 #include "fast_log.h"
@@ -151,5 +152,4 @@ void AudioEffectDynamics::update(void) {
 	release(block);
 }
 
-
-
+#endif
