@@ -26,6 +26,8 @@
  * THE SOFTWARE.
  */
 
+#if defined(KINETISK) || defined(__IMXRT1062__)
+
 #include "effect_dynamics.h"
 #include "fast_log.h"
 #include "utility/dspinst.h"
@@ -140,5 +142,5 @@ void AudioEffectDynamics::update(void) {
 	release(block);
 }
 
-
+#endif
 
