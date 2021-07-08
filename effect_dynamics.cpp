@@ -26,6 +26,8 @@
  * THE SOFTWARE.
  */
 
+#include <Arduino.h>
+
 #if defined(KINETISK) || defined(__IMXRT1062__)
 
 #include "effect_dynamics.h"
