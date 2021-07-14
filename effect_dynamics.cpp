@@ -25,50 +25,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include <Arduino.h>
 #if !defined(KINETISL)
 
 #include "effect_dynamics.h"
 #include "utility/dspinst.h"
-#include "utility/sqrt_integer.h"
-
-static float analyse_rms(int16_t *data) {
-	
-	uint32_t *p = (uint32_t *)data;
-	const uint32_t *end = p + AUDIO_BLOCK_SAMPLES / 2;
-	int64_t sum = 0;
-	do {
-		uint32_t n1 = *p++;
-		uint32_t n2 = *p++;
-		uint32_t n3 = *p++;
-		uint32_t n4 = *p++;
-		sum = multiply_accumulate_16tx16t_add_16bx16b(sum, n1, n1);
-		sum = multiply_accumulate_16tx16t_add_16bx16b(sum, n2, n2);
-		sum = multiply_accumulate_16tx16t_add_16bx16b(sum, n3, n3);
-		sum = multiply_accumulate_16tx16t_add_16bx16b(sum, n4, n4);
-		
-	} while (p < end);
-	if (sum == 0) return 0;
-	int32_t meansq = sum / AUDIO_BLOCK_SAMPLES;
-	return sqrt_uint32(meansq) / 32767.0f;
-}
-
-static void applyGain(int16_t *data, int32_t mult1, int32_t mult2) {
-	
-	uint32_t *p = (uint32_t *)data;
-	const uint32_t *end = p + AUDIO_BLOCK_SAMPLES / 2;
-	int32_t inc = (mult2 - mult1) / (AUDIO_BLOCK_SAMPLES / 2);
-	
-	do {
-		uint32_t tmp32 = *p; // read 2 samples from *data
-		int32_t val1 = signed_multiply_32x16b(mult1, tmp32);
-		mult1 += inc;
-		int32_t val2 = signed_multiply_32x16t(mult1, tmp32);
-		mult1 += inc;
-		val1 = signed_saturate_rshift(val1, 16, 0);
-		val2 = signed_saturate_rshift(val2, 16, 0);
-		*p++ = pack_16b_16b(val2, val1);
-	} while (p < end);
-}
 
 /* ----------------------------------------------------------------------
 * https://community.arm.com/tools/f/discussions/4292/cmsis-dsp-new-functionality-proposal/22621#22621
