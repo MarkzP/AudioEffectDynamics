@@ -145,7 +145,7 @@ void AudioEffectDynamics::update(void) {
         sumOfSamplesSquared -= (sampleToRemove * sampleToRemove);
 
         int16_t sample = block->data[i];
-        samplesSquared[sampleIndex] = fabsf(sample);
+        samplesSquared[sampleIndex] = abs(sample);
         uint32_t sampleSquared = sample * sample;
         sumOfSamplesSquared += sampleSquared;
 
