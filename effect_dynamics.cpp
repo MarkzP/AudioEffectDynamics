@@ -151,7 +151,7 @@ void AudioEffectDynamics::update(void) {
 
         sampleIndex = (sampleIndex + 1) % sampleBufferSize;
 
-        float rms = sqrt(sumOfSamplesSquared / float(sampleBufferSize)) / 32768.0;
+        float rms = sqrtf(sumOfSamplesSquared / float(sampleBufferSize)) / 32768.0f;
 
         //Compute block RMS level in Db
         float inputdb = MIN_DB;
