@@ -139,7 +139,8 @@ void AudioEffectDynamics::update(void) {
 
 	for (int i=0; i<AUDIO_BLOCK_SAMPLES; i++) {
 
-        unsigned int sampleIndexPlus1 = (sampleIndex + 1) % sampleBufferSize;
+        unsigned int sampleIndexPlus1 = sampleIndex + 1;
+        if (sampleIndexPlus1 >= sampleBufferSize) sampleIndexPlus1 = 0;
 
         uint32_t sampleToRemove = samplesSquared[sampleIndexPlus1];
         sumOfSamplesSquared -= (sampleToRemove * sampleToRemove);
@@ -149,7 +150,8 @@ void AudioEffectDynamics::update(void) {
         uint32_t sampleSquared = sample * sample;
         sumOfSamplesSquared += sampleSquared;
 
-        sampleIndex = (sampleIndex + 1) % sampleBufferSize;
+        sampleIndex++;
+        if (sampleIndex >= sampleBufferSize ) sampleIndex = 0;		
 
         float rms = sqrt(sumOfSamplesSquared / float(sampleBufferSize)) / 32768.0;
 
