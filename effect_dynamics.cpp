@@ -145,13 +145,13 @@ void AudioEffectDynamics::update(void) {
         sumOfSamplesSquared -= (sampleToRemove * sampleToRemove);
 
         int16_t sample = block->data[i];
-        samplesSquared[sampleIndex] = abs(sample);
+        samplesSquared[sampleIndex] = fabsf(sample);
         uint32_t sampleSquared = sample * sample;
         sumOfSamplesSquared += sampleSquared;
 
         sampleIndex = (sampleIndex + 1) % sampleBufferSize;
 
-        float rms = sqrt(sumOfSamplesSquared / float(sampleBufferSize)) / 32768.0;
+        float rms = sqrtf(sumOfSamplesSquared / float(sampleBufferSize)) / 32768.0;
 
         //Compute block RMS level in Db
         float inputdb = MIN_DB;
